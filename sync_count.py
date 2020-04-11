@@ -18,21 +18,32 @@ b = BPF(text="""
 
 BPF_HASH(last);
 
+struct trace_result_t {
+    u64 ts;
+    u64 delta;
+    u64 count;
+};
+
+BPF_PERF_OUTPUT(result);
+
 int do_trace(struct pt_regs *ctx) {
     u64 ts, *tsp, delta, key = 0, index=1, count = 0;
+    struct trace_result_t data;
 
     // attempt to read stored timestamp
     tsp = last.lookup(&key);
     if (tsp != 0) {
         delta = bpf_ktime_get_ns() - *tsp;
         if (delta < 1000000000) {
-            // output if time is less than 1 second
-            bpf_trace_printk("%d\\n", delta / 1000000);
             tsp = last.lookup(&index);
             if (tsp != NULL) {
                 count = *tsp;
                 count++;
             }
+            data.ts = bpf_ktime_get_ns();
+            data.delta = delta / 1000000;
+            data.count = count;
+            result.perf_submit(ctx, &data, sizeof(data));
         }
         last.delete(&key);
         last.delete(&index);
@@ -49,19 +60,19 @@ int do_trace(struct pt_regs *ctx) {
 b.attach_kprobe(event=b.get_syscall_fnname("sync"), fn_name="do_trace")
 print("Tracing for quick sync's... Ctrl-C to end")
 
-# format output
-import ctypes
-
-count_key = ctypes.c_int(1)
-
 start = 0
-while 1:
+def print_data(cpu, data, size):
+    global start
+    event = b["result"].event(data)
+    if start == 0:
+        start = event.ts
+    ts = event.ts - start
+    printb(b"At time %.2f s: multiple syncs detected, last %s ms ago, count %d" % (ts, event.delta, event.count))
+
+b["result"].open_perf_buffer(print_data)
+
+while True:
     try:
-        (task, pid, cpu, flags, ts, ms) = b.trace_fields()
-        if start == 0:
-            start = ts
-        ts = ts - start
-        count = b["last"][count_key]
-        printb(b"At time %.2f s: multiple syncs detected, last %s ms ago, count %d" % (ts, ms, count.value))
+        b.perf_buffer_poll()
     except KeyboardInterrupt:
         exit()
