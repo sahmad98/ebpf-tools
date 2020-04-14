@@ -22,7 +22,7 @@ pid = int(sys.argv[1])
 print("Probes for PID: %d" % pid)
 
 u = USDT(pid = pid)
-u.enable_probe(probe="StartProbe", fn_name="trace_on_market_data")
+u.enable_probe(probe="sleep_trace", fn_name="trace_on_market_data")
 
 # load BPF program
 code="""
@@ -30,29 +30,23 @@ code="""
 #include <linux/blkdev.h>
 
 struct result_t {
-	u64 seq_num;
+	u32 seq_num;
 };
 
 BPF_PERF_OUTPUT(events);
 
 void trace_on_market_data(struct pt_regs *ctx) {
-	struct result_t data;
-	//bpf_usdt_readarg(1, ctx, &data.seq_num);
-	data.seq_num = 1;
+	struct result_t data = {};
+        bpf_usdt_readarg(1, ctx, &data.seq_num);
 	events.perf_submit(ctx, &data, sizeof(data));
-	//bpf_trace_printk("OMD Called: \\n");
-	//return 0;
 }
 """
 b = BPF(text=code, usdt_contexts=[u])
 #b.trace_print()
 
 def print_data(cpu, data, size):
-	e = b["events"]
-	print(e)
-	# print("OnMarketData: Seq: %d %-5d" % (e.seq_num, cpu))
-
-b["events"].clear()
+	e = b["events"].event(data)
+	print("SleepTrace: Seq: %d %-5d" % (e.seq_num, cpu))
 
 b["events"].open_perf_buffer(print_data)
 while True:

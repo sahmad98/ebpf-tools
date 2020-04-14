@@ -11,14 +11,14 @@ struct data_t {
 BPF_HASH(time);
 BPF_PERF_OUTPUT(events);
 
-TRACEPOINT_PROBE(irq_vectors, local_timer_entry) {
+TRACEPOINT_PROBE(irq_vectors, reschedule_entry) {
     u64 key = bpf_get_smp_processor_id();
     u64 t = bpf_ktime_get_ns();
     time.update(&key, &t);
     return 0;
 }
 
-TRACEPOINT_PROBE(irq_vectors, local_timer_exit) {
+TRACEPOINT_PROBE(irq_vectors, reschedule_exit) {
     u64 key = bpf_get_smp_processor_id();
     u64* kp;
     kp = time.lookup(&key);
@@ -27,6 +27,7 @@ TRACEPOINT_PROBE(irq_vectors, local_timer_exit) {
         result.delta = bpf_ktime_get_ns() - *kp;
         events.perf_submit(args, &result, sizeof(result));
     }
+    return 0;
 }
 '''
 
@@ -40,7 +41,7 @@ def print_data(cpu, data, size):
     if cpu == option.core:
         print "%-8d %-16s" % (cpu, e.delta)
 b["events"].open_perf_buffer(print_data)
-print 'Running CPU %d Timer Latency... Press Ctrl C-to Quit' % option.core
+print 'Running CPU %d Rescheduling Latency... Press Ctrl C-to Quit' % option.core
 print '%-8s %-16s' % ("CPU", "LATENCY")
 while True:
     try:
