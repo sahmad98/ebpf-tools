@@ -6,6 +6,7 @@ import argparse
 from bcc import BPF, PerfType, PerfHWConfig
 import signal
 from time import sleep
+import json
 
 parser = argparse.ArgumentParser(
     description="Summarize cache references and misses by PID",
@@ -17,6 +18,8 @@ parser.add_argument(
     "duration", nargs="?", default=10, help="Duration, in seconds, to run")
 parser.add_argument("--ebpf", action="store_true",
     help=argparse.SUPPRESS)
+parser.add_argument("-p", "--plot", action="store_true", help="Plot bar plot")
+parser.add_argument("-l", "--load", action="store_true", help="Load Previous Run Data")
 args = parser.parse_args()
 
 # load BPF program
@@ -86,3 +89,47 @@ print("Hit/Miss Rate")
 print("%-8s %-8s %s" % ("CPU", "HitRate", "MissRate"))
 for cpu in hit_rate:
     print("%-8s %-8.2f %.2f" % (cpu, hit_rate[cpu], miss_rate[cpu]))
+
+if args.plot:
+    print("Plotting Bar Chart")
+    import matplotlib
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    if args.load:
+        print("Loading prev.json")
+        with open('prev.json', 'r') as f:
+           data = f.read()
+        [prev_hit, prev_miss] = json.loads(data)
+    x_labels = []
+    hit_data = []
+    miss_data = []
+    prev_hit_data = []
+    prev_miss_data = []
+    for cpu in hit_rate:
+        x_labels.append('CPU' + str(cpu))
+        hit_data.append(hit_rate[cpu])
+        miss_data.append(miss_rate[cpu])
+        if args.load:
+            prev_hit_data.append(prev_hit[str(cpu)])
+            prev_miss_data.append(prev_miss[str(cpu)])
+    width = 0.25
+    x = np.arange(len(x_labels))
+    fig, ax = plt.subplots()
+    ax.bar(x - width / 2, hit_data, width = width, label = 'CurrentHitRate', tick_label=x_labels)
+    ax.bar(x - width / 2, miss_data, width = width,  bottom=hit_data, label = 'CurrentMissRate')
+    if args.load:
+        ax.bar(x + width / 2, prev_hit_data, width = width, label = 'PreviousHitRate')
+        ax.bar(x + width / 2, prev_miss_data, width = width, bottom=prev_hit_data, label = 'PreviousMissRate')
+
+    ax.set_ylabel('Hit/Miss Rate%')
+    ax.set_title('LLC Hit Ratio')
+    ax.set(ylim=(0.0,1.2))
+    ax.legend()
+    plt.show()
+
+    f = open('prev.json', 'w')
+    print("Dumping Current Run Data in prev.json.To load use -l flag")
+    f.write(json.dumps([hit_rate, miss_rate]))
+    f.flush()
+    f.close()
