@@ -1,4 +1,4 @@
-# bpf_tools
+# ebpf-tools
 eBPF Tools
 
 - [disklatency.py](disklatency.py) - Measure Disk I/O Latency
@@ -9,3 +9,4 @@ eBPF Tools
 - [sync_count.py](sync_count.py) - Monitor number of times `sync` has been called.
 - [timer_interrupt_latency.py](timer_interrupt_latency.py) - Timer Interrupt Latency
 - [user_probe.py](user_probe.py) - Example usage of User Probes (USDT)
+- [core_frequency.py](core_frequency.py) - Low overhead tool to monitor in realtime operating core frequencies
